@@ -1,103 +1,160 @@
-import Image from "next/image";
+"use client";
+
+import { Card } from "@/components/ui/card";
+import { useCallback, useState } from "react";
+import { useDropzone } from "react-dropzone";
+import { Loader2 } from "lucide-react";
+import { ChatInterface } from "@/components/chat-interface";
+import { DocumentMetadata } from "@/lib/types";
+import { DocumentHistory } from "@/components/document-history";
+import { ModeToggle } from "@/components/dark-mode-toggle";
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(false);
+  const [error, setError] = useState<string>("");
+  const [summary, setSummary] = useState<string>("");
+  const [documents, setDocuments] = useState<DocumentMetadata[]>([]);
+  const [currentDocument, setCurrentDocument] = useState<DocumentMetadata>();
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    try {
+      setError("");
+      setUploadProgress(true);
+      const formData = new FormData();
+      formData.append("file", acceptedFiles[0]);
+
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to upload document");
+      }
+
+      const data = await response.json();
+      setSummary(data.summary);
+
+      const newDoc: DocumentMetadata = {
+        id: data.documentId,
+        filename: acceptedFiles[0].name,
+        uploadedAt: new Date(),
+        summary: data.summary,
+        pageCount: data.pageCount,
+        fileSize: acceptedFiles[0].size,
+      };
+      setDocuments((prev) => [...prev, newDoc]);
+      setCurrentDocument(newDoc);
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "An unknown error occurred"
+      );
+    } finally {
+      setUploadProgress(false);
+    }
+  }, []);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { "application/pdf": [".pdf"] },
+    maxSize: 10 * 1024 * 1024, // 10MB
+  });
+
+  const handleMessage = async (message: string, documentId: string) => {
+    try {
+      setLoading(true);
+      const response = await fetch("/api/question", {
+        method: "POST",
+        body: JSON.stringify({
+          question: message,
+          documentId,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to send question");
+      }
+
+      const data = await response.json();
+      return data.answer;
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "An unknown error occurred"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDocumentSelect = (documentId: string) => {
+    const doc = documents.find((doc) => doc.id === documentId);
+    if (doc) {
+      setCurrentDocument(doc);
+    }
+  };
+
+  return (
+    <div className="container mx-auto p-4">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold">AI Document Assistant</h1>
+        <div>
+          <ModeToggle />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="md:col-span-2">
+          <Card className="p-6 mb-8">
+            <div
+              {...getRootProps()}
+              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+                isDragActive
+                  ? "border-blue-500"
+                  : "border-gray-300 dark:border-gray-700"
+              }`}
+            >
+              <input {...getInputProps()} />
+              {uploadProgress ? (
+                <div className="flex items-center justify-center gap-2">
+                  <Loader2 className="animate-spin size-4" />
+                  <p>Processing document...</p>
+                </div>
+              ) : (
+                <p>Drag and drop PDF files here, or click to select files</p>
+              )}
+            </div>
+          </Card>
+
+          {error && (
+            <div className="bg-red-50 text-red-500 p-4 rounded-lg mb-4">
+              {error}
+            </div>
+          )}
+
+          {summary && (
+            <Card className="p-6 mb-8">
+              <h2 className="text-xl font-semibold mb-4">Document Summary</h2>
+              <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
+                {summary}
+              </p>
+            </Card>
+          )}
+
+          <ChatInterface
+            onSendMessage={handleMessage}
+            loading={loading}
+            currentDocument={currentDocument}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
+        </div>
+
+        <div className="md:sticky md:top-4 h-fit">
+          <DocumentHistory
+            documents={documents}
+            onSelect={handleDocumentSelect}
+            currentId={currentDocument?.id}
           />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        </div>
+      </div>
     </div>
   );
 }
