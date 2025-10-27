@@ -1,3 +1,5 @@
+export const runtime = "nodejs"
+
 import { Pinecone } from "@pinecone-database/pinecone";
 import { OpenAI, OpenAIEmbeddings } from "@langchain/openai";
 import { PineconeStore } from "@langchain/pinecone";
